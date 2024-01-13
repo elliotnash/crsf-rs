@@ -3,6 +3,7 @@
 extern crate bitfield;
 extern crate crc;
 
+use core::cmp::max;
 use bitfield::bitfield;
 use buffer::CircularBuffer;
 use crc::{Crc, CRC_8_DVB_S2};
@@ -230,34 +231,81 @@ bitfield! {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct RcChannelsPacked(pub [u16; 16]);
+pub struct RcChannelsPacked([u16; 16]);
 
 impl RcChannelsPacked {
     pub fn parse(data: &[u8]) -> Self {
         let channels_raw = RcChannelsRaw(data);
 
         Self([
-            Self::map_chan(u16::from_le(channels_raw.ch0())),
-            Self::map_chan(u16::from_le(channels_raw.ch1())),
-            Self::map_chan(u16::from_le(channels_raw.ch2())),
-            Self::map_chan(u16::from_le(channels_raw.ch3())),
-            Self::map_chan(u16::from_le(channels_raw.ch4())),
-            Self::map_chan(u16::from_le(channels_raw.ch5())),
-            Self::map_chan(u16::from_le(channels_raw.ch6())),
-            Self::map_chan(u16::from_le(channels_raw.ch7())),
-            Self::map_chan(u16::from_le(channels_raw.ch8())),
-            Self::map_chan(u16::from_le(channels_raw.ch9())),
-            Self::map_chan(u16::from_le(channels_raw.ch10())),
-            Self::map_chan(u16::from_le(channels_raw.ch11())),
-            Self::map_chan(u16::from_le(channels_raw.ch12())),
-            Self::map_chan(u16::from_le(channels_raw.ch13())),
-            Self::map_chan(u16::from_le(channels_raw.ch14())),
-            Self::map_chan(u16::from_le(channels_raw.ch15())),
+            u16::from_le(channels_raw.ch0()),
+            u16::from_le(channels_raw.ch1()),
+            u16::from_le(channels_raw.ch2()),
+            u16::from_le(channels_raw.ch3()),
+            u16::from_le(channels_raw.ch4()),
+            u16::from_le(channels_raw.ch5()),
+            u16::from_le(channels_raw.ch6()),
+            u16::from_le(channels_raw.ch7()),
+            u16::from_le(channels_raw.ch8()),
+            u16::from_le(channels_raw.ch9()),
+            u16::from_le(channels_raw.ch10()),
+            u16::from_le(channels_raw.ch11()),
+            u16::from_le(channels_raw.ch12()),
+            u16::from_le(channels_raw.ch13()),
+            u16::from_le(channels_raw.ch14()),
+            u16::from_le(channels_raw.ch15()),
         ])
     }
+    pub fn get<T>(&self, map: fn(u16) -> T) -> [T; 16] {
+        return [
+            map(self.0[0]),
+            map(self.0[1]),
+            map(self.0[2]),
+            map(self.0[3]),
+            map(self.0[4]),
+            map(self.0[5]),
+            map(self.0[6]),
+            map(self.0[7]),
+            map(self.0[8]),
+            map(self.0[9]),
+            map(self.0[10]),
+            map(self.0[11]),
+            map(self.0[12]),
+            map(self.0[13]),
+            map(self.0[14]),
+            map(self.0[15]),
+        ];
+    }
+}
 
-    const fn map_chan(x: u16) -> u16 {
-        (1000 + (((x as u32).saturating_sub(191)) * (2000 - 1000) * 2 / (1792 - 191) + 1) / 2)
-            as u16
+const RAW_CHANNEL_MIN: u16 = 174;
+const RAW_CHANNEL_MID: u16 = 992;
+const RAW_CHANNEL_MAX: u16 = 1811;
+
+const PWM_CHANNEL_MIN: u16 = 988;
+const PWM_CHANNEL_MID: u16 = 1500;
+const PWM_CHANNEL_MAX: u16 = 2012;
+
+pub struct RcChannelMap;
+
+impl RcChannelMap {
+    pub fn raw(x: u16) -> u16 {
+        x
+    }
+    pub fn pwm(x: u16) -> u16 {
+        let c = x as i16 - RAW_CHANNEL_MID as i16;
+        if c <= 0 {
+            PWM_CHANNEL_MID - ((-c) as u32 * (PWM_CHANNEL_MID-PWM_CHANNEL_MIN) as u32 / (RAW_CHANNEL_MID-RAW_CHANNEL_MIN) as u32) as u16
+        } else {
+            PWM_CHANNEL_MID + (c as u32 * (PWM_CHANNEL_MAX-PWM_CHANNEL_MID) as u32 / (RAW_CHANNEL_MAX-RAW_CHANNEL_MID) as u32) as u16
+        }
+    }
+    pub fn float(x: u16) -> f32 {
+        let c = x as i16 - RAW_CHANNEL_MID as i16;
+        if c <= 0 {
+            c as f32 / (RAW_CHANNEL_MID-RAW_CHANNEL_MIN) as f32
+        } else {
+            c as f32 / (RAW_CHANNEL_MAX-RAW_CHANNEL_MID) as f32
+        }
     }
 }
